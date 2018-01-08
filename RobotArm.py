@@ -9,14 +9,13 @@ from scipy.linalg import norm
 
 def perpendicularVector(h):
     if norm(h[0]) == 0 and norm(h[1]) == 0:
-        if iszero(h[2]):
+        if norm(h[2]) == 0:
             # v is Vector(0, 0, 0)
             raise ValueError('zero vector')
 
         # v is Vector(0, 0, v.z)
         return np.matrix([[0],[1],[0]])
-
-    return np.matrix([[-h[1]], [h[0]], [0]])
+    return np.matrix([[-float(h[1])], [float(h[0])], [0]])/norm(np.matrix([[-float(h[1])], [float(h[0])], [0]]))
 
 def calculateCylinder(coor,h):
     #axis and radius
@@ -56,28 +55,28 @@ def calculateCylinder(coor,h):
 def calculateRectangle(coor,h):
     w = 0.5
     t = 0.15
-    c1 = coor + h*w
-    c2 = coor - h*w
-    p0 = perpendicularVector(h)*t
-    p1 = rot(h,np.pi)*p0
-    p3 = rot(h,np.pi/2)*p0
-    p4 = rot(h,-np.pi/2)*p0
-    p5 = -p0
-    p6 = -p1
-    p7 = -p2
-    p8 = -p3
-    print p0
-    print p1
-    print p2
-    print p3
-    print p4
-    print p5
-    print p6
-    print p7
-    print p8
-    return
-class RobotArm:
+    c1 = h*w
+    c2 = -h*w
+    p0 = perpendicularVector(h)*t + c1
+    p2 = sa.rot(h,np.pi)*p0
+    p1 = sa.rot(h,np.pi/2)*p0
+    p3 = sa.rot(h,-np.pi/2)*p0
+    p0 += coor
+    p1 += coor
+    p2 += coor
+    p3 += coor
+    p4 = perpendicularVector(h)*t + c2
+    p6 = sa.rot(h,np.pi)*p4
+    p5 = sa.rot(h,np.pi/2)*p4
+    p7 = sa.rot(h,-np.pi/2)*p4
+    p4 += coor
+    p5 += coor
+    p6 += coor
+    p7 += coor    
+    points = np.array([p0,p1,p2,p3,p4,p5,p6,p7])
+    return points
 
+class RobotArm:
     def __init__(self,segments,zeroConfig):
         #The number of segments in this robot
         self.numSegs = len(segments)
@@ -99,6 +98,14 @@ class RobotArm:
             self.r0T = np.dot(self.r0T, sa.rot(segments[i].getUnitVector(),zeroConfig[i]))
             self.P.append(self.p0T)
             self.Q.append(zeroConfig[i])
+            if i != 0 and i != len(segments) - 1:
+                segments[i].adjacentJoints(segments[i-1].getSegmentType(),segments[i+1].getSegmentType())
+            elif i == 0:
+                segments[i].adjacentJoints(-1,segments[i+1].getSegmentType())
+            elif i == len(segments) - 1:
+                segments[i].adjacentJoints(segments[i-1].getSegmentType(),-1)
+                
+                
             
         ####################### Draw Plot
         self.drawArm()
@@ -114,6 +121,8 @@ class RobotArm:
         self.ax = self.fig.gca(projection='3d')    
         self.ax.set_aspect('equal')
         self.drawnItems = []
+        cid = self.fig.canvas.mpl_connect('key_press_event', self.keyPress)
+        
         
         # draw cube
         r = [0, 6]
@@ -141,6 +150,8 @@ class RobotArm:
             p0 = self.P[-2]
             p1 = np.squeeze(np.asarray(p1))
             p0 = np.squeeze(np.asarray(p0))
+            print p0
+            print p1
             line = self.ax.plot(*zip(p0,p1), color="cyan", linewidth=5.0,zorder=1)            
             
                             
@@ -169,10 +180,33 @@ class RobotArm:
             if self.segmentList[i].getSegmentType() == 1:
                 coor = self.P[i]
                 h = self.segmentList[i].getUnitVector()
-                calculateRectangle(coor,h)           
-            
+                points = calculateRectangle(coor,h)
+                #Plot the sides of the cube
+                X = points[:,0]
+                Y = points[:,1]
+                Z = points[:,2]
+                for i in range(0,len(points)):
+                    for j in range(i+1,len(points)):
+                        p1 = np.squeeze(np.asarray(points[i]))
+                        p0 = np.squeeze(np.asarray(points[j]))                        
+                        self.ax.plot(*zip(p1,p0), color="red")            
             
         plt.show()
+        return
+    
+    def keyPress(self,event):
+        if event.key == 'p':
+            print "p was selected, so increase q"
+        elif event.key == 'l':
+            print "l was selected, so decrease q"
+        elif event.key.isdigit():
+            if self.numSegs <= int(event.key):
+                self.focusedJoint = 0
+            else:
+                self.focusedJoint = int(event.key)
+            print "self.focusedJoint is now: " + str(self.focusedJoint)
+                                    
+        return
         
     
             
