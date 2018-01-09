@@ -92,6 +92,9 @@ class RobotArm:
         self.Q =[]
         #The array containing the positions of each position
         self.P = []
+        #The following will hold the joints that can actually be moved.
+        self.moveableJoints = set([])
+        
         self.P.append(self.p0T)
         for i in range(0,len(segments)):
             self.p0T = self.p0T + np.dot(self.r0T,segments[i].getLength())
@@ -104,6 +107,9 @@ class RobotArm:
                 segments[i].adjacentJoints(-1,segments[i+1].getSegmentType())
             elif i == len(segments) - 1:
                 segments[i].adjacentJoints(segments[i-1].getSegmentType(),-1)
+            
+            if segments[i].getSegmentType() == 0 or segments[i].getSegmentType() == 1:
+                self.moveableJoints.add(i)
                 
                 
             
@@ -144,7 +150,9 @@ class RobotArm:
                         break
                 p1 = np.squeeze(np.asarray(p1))
                 p0 = np.squeeze(np.asarray(p0))
-                line = self.ax.plot(*zip(p0,p1), color="cyan", linewidth=5.0,zorder=1)
+                line, = self.ax.plot(*zip(p0,p1), color="cyan", linewidth=5.0,zorder=1)
+                #Add the line to a list of items that were drawn. This is needed to delete the lines later on.
+                self.drawnItems.append(line)
         if self.segmentList[-1].getSegmentType() == 2:
             p1 = self.P[-1]
             p0 = self.P[-2]
@@ -152,7 +160,8 @@ class RobotArm:
             p0 = np.squeeze(np.asarray(p0))
             print p0
             print p1
-            line = self.ax.plot(*zip(p0,p1), color="cyan", linewidth=5.0,zorder=1)            
+            line, = self.ax.plot(*zip(p0,p1), color="cyan", linewidth=5.0,zorder=1) 
+            self.drawnItems.append(line)
             
                             
         #The following loop draws a dot at each joint connection    
@@ -168,7 +177,8 @@ class RobotArm:
             y = [float(p1[1])]
             z = [float(p1[2])]   
             #Plot a point representing the segment end
-            self.ax.plot(x,y,z, 'ko',zorder=2)
+            point, = self.ax.plot(x,y,z, 'ko',zorder=2)
+            self.drawnItems.append(point)
         
         #The following plots revolute joints and prismatic joints    
         for i in range(0,self.numSegs):
@@ -176,7 +186,8 @@ class RobotArm:
                 coor = self.P[i]
                 h = self.segmentList[i].getUnitVector()
                 X,Y,Z = calculateCylinder(coor,h)
-                self.ax.plot_surface(X, Y, Z, color = 'b',edgecolor='b', zorder=3)
+                surface = self.ax.plot_surface(X, Y, Z, color = 'b',edgecolor='b', zorder=3)
+                
             if self.segmentList[i].getSegmentType() == 1:
                 coor = self.P[i]
                 h = self.segmentList[i].getUnitVector()
@@ -189,7 +200,8 @@ class RobotArm:
                     for j in range(i+1,len(points)):
                         p1 = np.squeeze(np.asarray(points[i]))
                         p0 = np.squeeze(np.asarray(points[j]))                        
-                        self.ax.plot(*zip(p1,p0), color="red")            
+                        line, = self.ax.plot(*zip(p1,p0), color="red")
+                        self.drawnItems.append(line,)
             
         plt.show()
         return
@@ -197,16 +209,26 @@ class RobotArm:
     def keyPress(self,event):
         if event.key == 'p':
             print "p was selected, so increase q"
+            self.Q[self.focusedJoint] += np.pi/180
+            self.clearDrawings()
+            self.drawArm()
         elif event.key == 'l':
             print "l was selected, so decrease q"
+            self.Q[self.focusedJoint] -= np.pi/180
+            self.clearDrawings()
+            self.drawArm()
         elif event.key.isdigit():
-            if self.numSegs <= int(event.key):
+            if self.numSegs <= int(event.key) or int(event.key) not in self.moveableJoints:
                 self.focusedJoint = 0
             else:
                 self.focusedJoint = int(event.key)
             print "self.focusedJoint is now: " + str(self.focusedJoint)
                                     
         return
+    
+    def clearDrawings(self):
+        for item in self.drawnItems:
+            item.remove()
         
     
             

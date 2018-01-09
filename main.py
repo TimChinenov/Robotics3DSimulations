@@ -3,8 +3,10 @@ import RobotArm as ra
 import numpy as np
 '''
 #Things to add:
--need a list in RA that holds which joints can actually change. Other joints should not be able to be
-manipulated
+So...kinda big problem. we dont want to delete and redraw the item each time when we can
+just modify the points. 
+We create a container for each segment that holds its line, cylinder,cube etc...We then specifically
+modify these segments
 #Current Bugs:
 #The cylinder should overlap the lines not the other way around
 '''
