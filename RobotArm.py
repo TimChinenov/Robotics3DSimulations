@@ -109,12 +109,18 @@ class RobotArm:
         self.P = []
         #The number of joints tha can be manipulated
         self.numJoints = -1
+        self.keyToJoint = {}
         
         #Add origin to the position list
         self.P.append(self.p0T)
         for i in range(0,len(segments)):#loop performs foward kinematics to find the p0T and r0T
-            self.p0T = self.p0T + np.dot(self.r0T,segments[i].getLength())
-            self.r0T = np.dot(self.r0T, sa.rot(segments[i].getUnitVector(),zeroConfig[i]))
+            if segments[i].getSegmentType() == 1:
+                self.p0T = self.p0T + np.dot(self.r0T,zeroConfig[i]*segments[i].getLength())
+                self.r0T = np.dot(self.r0T, sa.eye(3))
+            else:
+                self.p0T = self.p0T + np.dot(self.r0T,segments[i].getLength())
+                self.r0T = np.dot(self.r0T, sa.rot(segments[i].getUnitVector(),zeroConfig[i]))
+            
             self.P.append(self.p0T) #add new position to positions list
             self.Q.append(zeroConfig[i]) #add joint angle to angles list
             #If the joint is not the first or last joint, add the joint types of it's adjacent 
@@ -129,26 +135,28 @@ class RobotArm:
             
             if segments[i].getSegmentType() == 0 or segments[i].getSegmentType() == 1:
                 self.numJoints += 1
+                self.keyToJoint[self.numJoints] = i
                 
                 
             
         ####################### Draw Plot
+        #Creates figure for program to put things on
+        self.fig = plt.figure()
+    
+        
+        
         self.drawArm()
         return
     
     
     
     def drawArm(self):
-        #Creates figure for program to put things on
-        self.fig = plt.figure()
-    
         #Tell the figure to make a 3d projection
         self.ax = self.fig.gca(projection='3d')    
         self.ax.set_aspect('equal')
         self.drawnItems = []
         #initialize event handler
         cid = self.fig.canvas.mpl_connect('key_press_event', self.keyPress)
-        
         
         # draw cube to create equaivalently scaled axis
         r = [0, 6] #region the cube covers
@@ -159,7 +167,7 @@ class RobotArm:
         #The following draws the robot arms.          
         for i in range(1,len(self.P)-1):
             #draw a line dependent on P and Q 
-            if self.segmentList[i].getSegmentType() == 2: #check that a segment is an arm
+            if self.segmentList[i].getSegmentType() == 2 or self.segmentList[i].getSegmentType() == 1: #check that a segment is an arm
                 p1 = self.P[i] #Set the starting and ending points of the joint
                 p0 = self.P[i-1]
                 #create a range that moves backwards until a none joint segment is found
@@ -167,7 +175,7 @@ class RobotArm:
                 rge.reverse()
                 for j in rge:
                     p0 = self.P[j]
-                    if self.segmentList[j].getSegmentType() == 2: #report first non joint segment
+                    if self.segmentList[j].getSegmentType() == 2 or self.segmentList[j].getSegmentType() == 1: #report first non joint segment
                         break
                 p1 = np.squeeze(np.asarray(p1))
                 p0 = np.squeeze(np.asarray(p0))
@@ -241,6 +249,7 @@ class RobotArm:
                         line, = self.ax.plot(*zip(p1,p0), color="red")
                         self.drawnItems.append(line,)
             
+        
         plt.show()
         return
     
@@ -249,15 +258,28 @@ class RobotArm:
         #if p is pressed then increase the angle of that joint
         if event.key == 'p':
             print "p was selected, so increase q"
-            self.Q[self.focusedJoint] += np.pi/180
-            self.clearDrawings()
+            if self.segmentList[self.focusedJoint].getSegmentType() == 1:
+                self.Q[self.focusedJoint] += 0.1
+                if self.Q[self.focusedJoint] > 1:
+                    self.Q[self.focusedJoint] = 1               
+            elif self.segmentList[self.focusedJoint].getSegmentType() == 0:
+                self.Q[self.focusedJoint] += np.pi/8
+            self.fig.clear()
+            self.recalculate()
             self.drawArm()
+                       
         #if l is pressed decreased the angle of that joint
         elif event.key == 'l':
             print "l was selected, so decrease q"
-            self.Q[self.focusedJoint] -= np.pi/180
-            self.clearDrawings()
-            self.drawArm()
+            if self.segmentList[self.focusedJoint].getSegmentType() == 1:
+                self.Q[self.focusedJoint] -= 0.1
+                if self.Q[self.focusedJoint] < -1:
+                    self.Q[self.focusedJoint]
+            elif self.segmentList[self.focusedJoint].getSegmentType() == 0:
+                self.Q[self.focusedJoint] -= np.pi/8
+            self.fig.clear()
+            self.recalculate()
+            self.drawArm()              
         #if the key pressed is number, change the focused joint to this number
         #This is the joint that responds to p and l
         elif event.key.isdigit():
@@ -265,14 +287,31 @@ class RobotArm:
             if self.numJoints < int(event.key):
                 self.focusedJoint = 0
             else:
-                self.focusedJoint = int(event.key)
-            print "self.focusedJoint is now: " + str(self.focusedJoint)
-                                    
+                self.focusedJoint = self.keyToJoint[int(event.key)]
+            print "self.focusedJoint is now: " + str(self.focusedJoint)                          
         return
     
     def clearDrawings(self):
         for item in self.drawnItems:
             item.remove()
+            
+    def recalculate(self):
+        self.p0T = np.matrix([[0],[0],[0]])
+        #The orientation of the end effector of the robot
+        self.r0T = sa.eye(3)
+        #The array containing the positions of each position
+        self.P = []
+        #Add origin to the position list
+        self.P.append(self.p0T)
+        for i in range(0,len(self.segmentList)):#loop performs foward kinematics to find the p0T and r0T
+            if self.segmentList[i].getSegmentType() == 1:
+                self.p0T = self.p0T + np.dot(self.r0T,self.Q[i]*self.segmentList[i].getLength())
+                self.r0T = np.dot(self.r0T, sa.eye(3))
+            else:
+                self.p0T = self.p0T + np.dot(self.r0T,self.segmentList[i].getLength())
+                self.r0T = np.dot(self.r0T, sa.rot(self.segmentList[i].getUnitVector(),self.Q[i]))   
+                
+            self.P.append(self.p0T) #add new position to positions list
         
     
             

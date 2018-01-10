@@ -43,11 +43,10 @@ class Segment:
         self.segType = segType
         self.length = length*h
         self.h = h #unit vector
-        self.q = q #angle or prismatic distance
-        
-        #If the segment is a revolute joint
-        if segType == 2:
-            self.length = np.dot(rot(self.getUnitVector(),self.q),self.length)
+        if self.segType == 2:
+            self.q = 0
+        else:
+            self.q = q #angle or prismatic distance
             
     def adjacentJoints(self,prev_joint,next_joint):
         #tuple holds the type of segment that joint attaches too.
