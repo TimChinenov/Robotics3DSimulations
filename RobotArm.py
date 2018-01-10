@@ -7,21 +7,31 @@ import matplotlib.pyplot as plt
 from itertools import product, combinations
 from scipy.linalg import norm
 
+#This function finds a perpendicular vector 
+#To the vector inserted. This is used for making prismatic joint graphics
 def perpendicularVector(h):
+    #Check if the first and second matrix values are 0
     if norm(h[0]) == 0 and norm(h[1]) == 0:
+        #if there all zero, that is a problem. Raise error
         if norm(h[2]) == 0:
             # v is Vector(0, 0, 0)
             raise ValueError('zero vector')
 
         # v is Vector(0, 0, v.z)
+        #Otherwise just return a unit vector in a different direction from z axis
         return np.matrix([[0],[1],[0]])
+    #If zero matriceses is not a problem, we can just use knowledge of perpendicular
+    #vectors to return a perpendicular vector
     return np.matrix([[-float(h[1])], [float(h[0])], [0]])/norm(np.matrix([[-float(h[1])], [float(h[0])], [0]]))
 
+#This form is heavily taken from Amy Teegarden's Stack Overflow answer
 def calculateCylinder(coor,h):
     #axis and radius
-    R = 0.15
-    mtx = .5*h
-    p0 = coor + mtx
+    h = h/norm(h) #convert vector into unit vector
+    R = 0.15 #radius
+    mtx = .5*h #The cylinder is 1u in length
+    #Start and end positions of cylinder
+    p0 = coor + mtx 
     p1 = coor - mtx
     p0 = np.array([float(p0[0]), float(p0[1]), float(p0[2])])
     p1 = np.array([float(p1[0]), float(p1[1]), float(p1[2])])
@@ -52,19 +62,23 @@ def calculateCylinder(coor,h):
     #generate coordinates for surface
     return [p0[i] + v[i] * t + R * np.sin(theta) * n1[i] + R * np.cos(theta) * n2[i] for i in [0, 1, 2]]      
 
+#The following makes a psuedo rectangular prism for prismatic joints 
 def calculateRectangle(coor,h):
-    w = 0.5
-    t = 0.15
-    c1 = h*w
+    w = 0.5 #width of rectangle
+    t = 0.15 #height/2
+    c1 = h*w #vector of rectangular prism and negative vector
     c2 = -h*w
-    p0 = perpendicularVector(h)*t + c1
+    #The following calculates the 8 corners of the rectangular prism
+    p0 = perpendicularVector(h)*t + c1 
     p2 = sa.rot(h,np.pi)*p0
     p1 = sa.rot(h,np.pi/2)*p0
     p3 = sa.rot(h,-np.pi/2)*p0
+    #Move points relative to coordinate of joint
     p0 += coor
     p1 += coor
     p2 += coor
     p3 += coor
+    #repeats for other side of rectangular prism
     p4 = perpendicularVector(h)*t + c2
     p6 = sa.rot(h,np.pi)*p4
     p5 = sa.rot(h,np.pi/2)*p4
@@ -73,6 +87,7 @@ def calculateRectangle(coor,h):
     p5 += coor
     p6 += coor
     p7 += coor    
+    #returns array of 3D points.
     points = np.array([p0,p1,p2,p3,p4,p5,p6,p7])
     return points
 
@@ -92,24 +107,28 @@ class RobotArm:
         self.Q =[]
         #The array containing the positions of each position
         self.P = []
-        #The following will hold the joints that can actually be moved.
-        self.moveableJoints = set([])
+        #The number of joints tha can be manipulated
+        self.numJoints = -1
         
+        #Add origin to the position list
         self.P.append(self.p0T)
-        for i in range(0,len(segments)):
+        for i in range(0,len(segments)):#loop performs foward kinematics to find the p0T and r0T
             self.p0T = self.p0T + np.dot(self.r0T,segments[i].getLength())
             self.r0T = np.dot(self.r0T, sa.rot(segments[i].getUnitVector(),zeroConfig[i]))
-            self.P.append(self.p0T)
-            self.Q.append(zeroConfig[i])
+            self.P.append(self.p0T) #add new position to positions list
+            self.Q.append(zeroConfig[i]) #add joint angle to angles list
+            #If the joint is not the first or last joint, add the joint types of it's adjacent 
+            #joints to the segment object
             if i != 0 and i != len(segments) - 1:
                 segments[i].adjacentJoints(segments[i-1].getSegmentType(),segments[i+1].getSegmentType())
+            #Other wise, mark that the joint is the last or first joint with a -1    
             elif i == 0:
                 segments[i].adjacentJoints(-1,segments[i+1].getSegmentType())
             elif i == len(segments) - 1:
                 segments[i].adjacentJoints(segments[i-1].getSegmentType(),-1)
             
             if segments[i].getSegmentType() == 0 or segments[i].getSegmentType() == 1:
-                self.moveableJoints.add(i)
+                self.numJoints += 1
                 
                 
             
@@ -127,11 +146,12 @@ class RobotArm:
         self.ax = self.fig.gca(projection='3d')    
         self.ax.set_aspect('equal')
         self.drawnItems = []
+        #initialize event handler
         cid = self.fig.canvas.mpl_connect('key_press_event', self.keyPress)
         
         
-        # draw cube
-        r = [0, 6]
+        # draw cube to create equaivalently scaled axis
+        r = [0, 6] #region the cube covers
         for s, e in combinations(np.array(list(product(r, r, r))), 2):
             if np.sum(np.abs(s-e)) == r[1]-r[0]:
                 self.ax.plot3D(*zip(s, e), color="w",alpha=0)  
@@ -139,29 +159,29 @@ class RobotArm:
         #The following draws the robot arms.          
         for i in range(1,len(self.P)-1):
             #draw a line dependent on P and Q 
-            if self.segmentList[i].getSegmentType() == 2:
-                p1 = self.P[i]
+            if self.segmentList[i].getSegmentType() == 2: #check that a segment is an arm
+                p1 = self.P[i] #Set the starting and ending points of the joint
+                p0 = self.P[i-1]
+                #create a range that moves backwards until a none joint segment is found
                 rge = range(0,i)
                 rge.reverse()
-                p0 = self.P[i-1]
                 for j in rge:
                     p0 = self.P[j]
-                    if self.segmentList[j].getSegmentType() == 2:
+                    if self.segmentList[j].getSegmentType() == 2: #report first non joint segment
                         break
                 p1 = np.squeeze(np.asarray(p1))
                 p0 = np.squeeze(np.asarray(p0))
+                #draw the line
                 line, = self.ax.plot(*zip(p0,p1), color="cyan", linewidth=5.0,zorder=1)
-                #Add the line to a list of items that were drawn. This is needed to delete the lines later on.
-                self.drawnItems.append(line)
+                
+        #Add the last segment to the robot, assuming it is not a joint
         if self.segmentList[-1].getSegmentType() == 2:
             p1 = self.P[-1]
             p0 = self.P[-2]
             p1 = np.squeeze(np.asarray(p1))
             p0 = np.squeeze(np.asarray(p0))
-            print p0
-            print p1
+            #draw the line
             line, = self.ax.plot(*zip(p0,p1), color="cyan", linewidth=5.0,zorder=1) 
-            self.drawnItems.append(line)
             
                             
         #The following loop draws a dot at each joint connection    
@@ -171,8 +191,10 @@ class RobotArm:
             p1 = self.P[i]
             p0 = self.P[i-1]
             dist = np.linalg.norm(p1-p0)
-            if dist == 0 or dist == 1:
+            #if the distance between two points is 0  than you can skip it 
+            if dist == 0:
                 continue  
+            #convery xyz to proper list format
             x = [float(p1[0])]
             y = [float(p1[1])]
             z = [float(p1[2])]   
@@ -182,20 +204,36 @@ class RobotArm:
         
         #The following plots revolute joints and prismatic joints    
         for i in range(0,self.numSegs):
-            if self.segmentList[i].getSegmentType() == 0:
+            if self.segmentList[i].getSegmentType() == 0: #check if joint is revolute
+                #Get the coordinates, and unit vector
                 coor = self.P[i]
                 h = self.segmentList[i].getUnitVector()
+                r = sa.eye(3)#form new rotation matrix for finding new unit vector
+                for val in range(0,i): #Go up to the rotation of the current joint
+                    if self.segmentList[val].getSegmentType() == 0: #u vector only changes, if seg is revolute
+                        th = self.segmentList[val].getUnitVector() #get og unit vector
+                        r = np.dot(r, sa.rot(th, self.Q[val])) #iterate the rotation angle
+                h = np.dot(r,h) #calculate new unit vector
                 X,Y,Z = calculateCylinder(coor,h)
+                #draw cylinder
                 surface = self.ax.plot_surface(X, Y, Z, color = 'b',edgecolor='b', zorder=3)
                 
-            if self.segmentList[i].getSegmentType() == 1:
-                coor = self.P[i]
+            if self.segmentList[i].getSegmentType() == 1: #check if joint is prismatic
+                coor = self.P[i] #locate coordinate the joint is centered and the unit vector
                 h = self.segmentList[i].getUnitVector()
+                r = sa.eye(3)
+                #similarly to revolute joint, find rotation of unit vector for joint
+                for val in range(0,i):
+                    if self.segmentList[val].getSegmentType() == 0:
+                        th = self.segmentList[val].getUnitVector()
+                        r = np.dot(r, sa.rot(th, self.Q[val]))
+                h = np.dot(r,h)                
                 points = calculateRectangle(coor,h)
-                #Plot the sides of the cube
+                #get X,Y,Z positions of the cube corners
                 X = points[:,0]
                 Y = points[:,1]
                 Z = points[:,2]
+                # connect each point in the cube with lines
                 for i in range(0,len(points)):
                     for j in range(i+1,len(points)):
                         p1 = np.squeeze(np.asarray(points[i]))
@@ -206,19 +244,25 @@ class RobotArm:
         plt.show()
         return
     
+    #The following function handles key press events
     def keyPress(self,event):
+        #if p is pressed then increase the angle of that joint
         if event.key == 'p':
             print "p was selected, so increase q"
             self.Q[self.focusedJoint] += np.pi/180
             self.clearDrawings()
             self.drawArm()
+        #if l is pressed decreased the angle of that joint
         elif event.key == 'l':
             print "l was selected, so decrease q"
             self.Q[self.focusedJoint] -= np.pi/180
             self.clearDrawings()
             self.drawArm()
+        #if the key pressed is number, change the focused joint to this number
+        #This is the joint that responds to p and l
         elif event.key.isdigit():
-            if self.numSegs <= int(event.key) or int(event.key) not in self.moveableJoints:
+            #check that the selected joint is valid. If it isn't reset the joint to 0
+            if self.numJoints < int(event.key):
                 self.focusedJoint = 0
             else:
                 self.focusedJoint = int(event.key)
