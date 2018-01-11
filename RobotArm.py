@@ -93,32 +93,27 @@ def calculateRectangle(coor,h):
 
 class RobotArm:
     def __init__(self,segments,zeroConfig):
-        #The number of segments in this robot
-        self.numSegs = len(segments)
-        #The joint in focus for manipulation
-        self.focusedJoint = 0
-        #The list of segments that make up the robot
-        self.segmentList = segments
-        #the position of the end effector of the robot
-        self.p0T = np.matrix([[0],[0],[0]])
-        #The orientation of the end effector of the robot
-        self.r0T = sa.eye(3)
-        #The array of angles of the robot
-        self.Q =[]
-        #The array containing the positions of each position
-        self.P = []
-        #The number of joints tha can be manipulated
-        self.numJoints = -1
+        if len(segments) != len(zeroConfig):
+            raise ValueError('length of segment list and zero configuration list is not equal')
+        self.numSegs = len(segments) #The number of segments in this robot
+        self.focusedJoint = 0 #The joint in focus for manipulation
+        self.segmentList = segments #The list of segments that make up the robot
+        self.p0T = np.matrix([[0],[0],[0]]) #the position of the end effector of the robot
+        self.r0T = sa.eye(3) #The orientation of the end effector of the robot
+        self.Q =[] #The array of angles of the robot
+        self.P = [] #The array containing the positions of each position
+        self.numJoints = -1  #The number of joints tha can be manipulated
+        
+        #Dictionary that carries a key and matches it to the appropriate joint
         self.keyToJoint = {}
         
         #Add origin to the position list
         self.P.append(self.p0T)
         for i in range(0,len(segments)):#loop performs foward kinematics to find the p0T and r0T
-            if segments[i].getSegmentType() == 1:
+            if segments[i].getSegmentType() == 1: #if segment is prismatic perform translational motion
                 self.p0T = self.p0T + np.dot(self.r0T,zeroConfig[i]*segments[i].getLength())
-                self.r0T = np.dot(self.r0T, sa.eye(3))
             else:
-                self.p0T = self.p0T + np.dot(self.r0T,segments[i].getLength())
+                self.p0T = self.p0T + np.dot(self.r0T,segments[i].getLength()) 
                 self.r0T = np.dot(self.r0T, sa.rot(segments[i].getUnitVector(),zeroConfig[i]))
             
             self.P.append(self.p0T) #add new position to positions list
@@ -258,12 +253,15 @@ class RobotArm:
         #if p is pressed then increase the angle of that joint
         if event.key == 'p':
             print "p was selected, so increase q"
+            #if joint is prismatic increase length
             if self.segmentList[self.focusedJoint].getSegmentType() == 1:
                 self.Q[self.focusedJoint] += 0.1
+                #impose the limit on extension
                 if self.Q[self.focusedJoint] > 1:
-                    self.Q[self.focusedJoint] = 1               
+                    self.Q[self.focusedJoint] = 1  
+            #if joint is revolute
             elif self.segmentList[self.focusedJoint].getSegmentType() == 0:
-                self.Q[self.focusedJoint] += np.pi/8
+                self.Q[self.focusedJoint] += np.pi/8 #increase by this much
             self.fig.clear()
             self.recalculate()
             self.drawArm()
@@ -271,6 +269,7 @@ class RobotArm:
         #if l is pressed decreased the angle of that joint
         elif event.key == 'l':
             print "l was selected, so decrease q"
+            #similar to incrementing the length but in negative direction.
             if self.segmentList[self.focusedJoint].getSegmentType() == 1:
                 self.Q[self.focusedJoint] -= 0.1
                 if self.Q[self.focusedJoint] < -1:

@@ -40,6 +40,10 @@ class Segment:
         #will dictate revolution joints as 0, prismatic joints as 1,
         #and segments as 2. 
         #If the segment is a revolute joint then it's length should be 0
+        if segType > 2 or segType < 0:
+            raise ValueError('Invalid joint type')
+        if segType == 0 and length != 0:
+            raise ValueError('Revolute joints cannot have length')
         self.segType = segType
         self.length = length*h
         self.h = h #unit vector
